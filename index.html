@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wallfit</title>
+<style>
+  :root {
+    --bg: #16181c; --panel: #1f2228; --panel2: #272b33; --line: #343944;
+    --text: #e6e8ec; --muted: #9aa1ad; --accent: #5b9dff; --good: #3ecf8e; --warn: #f0b429; --bad: #ef5d5d;
+    --star: #ffcc4d;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line);
+    padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  .path { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40ch; }
+  .grp { display: flex; align-items: center; gap: 6px; }
+  .grp label { color: var(--muted); font-size: 12px; }
+  select, input[type=number], button {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+    padding: 5px 8px; font: inherit; font-size: 13px; }
+  input[type=number] { width: 72px; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  input[type=range] { width: 90px; accent-color: var(--accent); }
+  input[type=checkbox] { accent-color: var(--accent); }
+  .count { margin-left: auto; color: var(--muted); font-size: 13px; }
+  .count b { color: var(--text); }
+
+  main { padding: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--tile, 220px), 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+    cursor: pointer; position: relative; transition: transform .08s, border-color .08s; }
+  .card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .card.dim { opacity: .28; }
+  .card.dim:hover { opacity: .7; }
+  .thumb { width: 100%; aspect-ratio: var(--ar, 16/9); background: #0e0f12; display: block; object-fit: cover; }
+  .fit-contain .thumb { object-fit: contain; }
+  .meta { padding: 6px 8px; display: flex; gap: 6px; align-items: center; font-size: 12px; }
+  .meta .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+  .badge { font-variant-numeric: tabular-nums; padding: 1px 6px; border-radius: 4px; background: var(--panel2); white-space: nowrap; }
+  .badge.good { color: var(--good); } .badge.warn { color: var(--warn); } .badge.bad { color: var(--bad); }
+  .star { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.55); border: 0; border-radius: 50%;
+    width: 28px; height: 28px; padding: 0; font-size: 16px; color: #fff8; display: grid; place-items: center; }
+  .star.on { color: var(--star); }
+  .card:not(:hover) .star:not(.on) { opacity: 0; }
+  .empty { color: var(--muted); text-align: center; padding: 60px 0; }
+
+  /* viewer */
+  #viewer { position: fixed; inset: 0; z-index: 20; background: #0b0c0e; display: none; flex-direction: column; }
+  #viewer.open { display: flex; }
+  .vbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .vbar .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 50ch; }
+  .vbar .info { color: var(--muted); font-size: 13px; }
+  .vbar .sp { flex: 1; }
+  .stage { flex: 1; position: relative; display: grid; place-items: center; overflow: hidden; padding: 16px 64px; }
+  .frame { position: relative; max-width: 100%; max-height: 100%; aspect-ratio: var(--ar); height: 100%;
+    box-shadow: 0 0 0 1px var(--line); background: #000; }
+  .frame img { width: 100%; height: 100%; display: block; object-fit: cover; }
+  .frame.natural { aspect-ratio: auto; height: auto; box-shadow: none; background: none; display: contents; }
+  .frame.natural img { max-width: 100%; max-height: calc(100vh - 110px); width: auto; height: auto; object-fit: contain; }
+  .vbody { flex: 1; display: flex; min-height: 0; }
+  .vbody .stage { min-width: 0; container-type: size; }
+  .vbody .frame { width: min(100cqw, calc(100cqh * var(--ar))); height: auto; max-height: 100cqh; }
+  .vbody .frame.natural img#vImg { max-height: 100cqh; max-width: 100cqw; }
+  .frame { overflow: hidden; }
+  .frame img.blurbg { position: absolute; inset: 0; object-fit: cover; filter: blur(24px) brightness(.8); transform: scale(1.1); display: none; }
+  .frame.blur img.blurbg { display: block; }
+  .frame img#vImg { position: relative; }
+  .frame.mode-6 img#vImg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: none; object-fit: fill; }
+  .frame.mode-3 img#vImg { visibility: hidden; }
+  .frame.mode-3 { background-repeat: repeat; background-position: 0 0; }
+  .frame.mode-0 img#vImg { object-fit: fill; }
+  .frame.mode-1 img#vImg { object-fit: contain; }
+  #cropBox { position: absolute; border: 2px solid #fff; box-shadow: 0 0 0 9999px rgba(0,0,0,.6); cursor: move; touch-action: none; z-index: 2; }
+  #cropBox::before, #cropBox::after { content: ""; position: absolute; inset: 33.33% 0; border-top: 1px solid #fff5; border-bottom: 1px solid #fff5; pointer-events: none; }
+  #cropBox::after { inset: 0 33.33%; border: 0; border-left: 1px solid #fff5; border-right: 1px solid #fff5; }
+  #cropBox .h { position: absolute; width: 16px; height: 16px; background: #fff; border-radius: 3px; }
+  #cropBox .nw { left: -8px; top: -8px; cursor: nwse-resize; } #cropBox .se { right: -8px; bottom: -8px; cursor: nwse-resize; }
+  #cropBox .ne { right: -8px; top: -8px; cursor: nesw-resize; } #cropBox .sw { left: -8px; bottom: -8px; cursor: nesw-resize; }
+  #cropLbl { position: absolute; left: 6px; top: 6px; pointer-events: none; font-size: 12px; background: rgba(0,0,0,.7); padding: 1px 6px; border-radius: 4px; white-space: nowrap; }
+  #wpPanel { width: 300px; flex: none; background: var(--panel); border-left: 1px solid var(--line); padding: 14px; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
+  #wpPanel[hidden] { display: none; }
+  #wpPanel h3 { margin: 0; font-size: 15px; }
+  #wpPanel .sec { display: flex; flex-direction: column; gap: 6px; }
+  #wpPanel .lbl { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; display: flex; }
+  #wpPanel .links { margin-left: auto; text-transform: none; letter-spacing: 0; }
+  #wpPanel .links a { color: var(--accent); cursor: pointer; }
+  #wpPanel .note { color: var(--muted); font-size: 12px; }
+  #wpPanel .primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; padding: 8px; }
+  #wpPanel .primary:disabled { opacity: .4; cursor: default; }
+  #wpPanel label { font-size: 13px; display: flex; gap: 6px; align-items: center; }
+  #monMap { position: relative; height: 150px; }
+  .mon { position: absolute; border: 2px solid var(--line); background: var(--panel2); border-radius: 4px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; line-height: 1.2;
+    color: var(--muted); overflow: hidden; text-align: center; background-size: cover; background-position: center; }
+  .mon span { background: rgba(0,0,0,.6); padding: 1px 3px; border-radius: 3px; font-size: 10px; word-break: break-all; }
+  .mon:hover { border-color: var(--text); }
+  .mon.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); color: #fff; }
+  .mon.prev { outline: 2px dashed #fff8; outline-offset: 2px; }
+  .nav { position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 64px; font-size: 26px;
+    background: rgba(255,255,255,.06); border: 0; border-radius: 8px; color: #fff; }
+  .nav:hover { background: rgba(255,255,255,.16); }
+  .nav.prev { left: 10px; } .nav.next { right: 10px; }
+  .hint { color: var(--muted); font-size: 12px; text-align: center; padding: 6px; }
+  .hint kbd { background: var(--panel2); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font: 11px monospace; }
+  #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--panel2);
+    border: 1px solid var(--line); padding: 8px 14px; border-radius: 8px; z-index: 30; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+
+  .folderBtn { display: flex; align-items: center; gap: 6px; background: none; border: 1px solid transparent; padding: 2px 6px; margin: 2px 0 0 -6px; }
+  .folderBtn:hover { background: var(--panel2); }
+  .folderBtn .path { max-width: 46ch; }
+  .progress { max-width: 420px; margin: 80px auto; text-align: center; color: var(--muted); }
+  .bar { height: 6px; background: var(--panel2); border-radius: 3px; overflow: hidden; margin-top: 10px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+
+  /* folder picker */
+  #picker { position: fixed; inset: 0; z-index: 25; background: rgba(0,0,0,.6); display: none; place-items: center; padding: 16px; }
+  #picker.open { display: grid; }
+  .pk { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; width: min(640px, 100%);
+    max-height: min(720px, calc(100vh - 32px)); display: flex; flex-direction: column; overflow: hidden; }
+  .pk h2 { font-size: 15px; margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; }
+  .pk h2 button { margin-left: auto; }
+  .pkrow { display: flex; gap: 6px; padding: 10px 14px; }
+  .pkrow input[type=text] { flex: 1; min-width: 0; background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 8px; font: 13px monospace; }
+  .recent { padding: 0 14px 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .recent button { font-size: 12px; padding: 3px 8px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dirs { flex: 1; overflow: auto; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); min-height: 160px; }
+  .dir { padding: 7px 14px; cursor: pointer; display: flex; gap: 8px; align-items: center; }
+  .dir:hover { background: var(--panel2); }
+  .dirs .none { padding: 14px; color: var(--muted); }
+  .pkfoot { display: flex; align-items: center; gap: 12px; padding: 10px 14px; flex-wrap: wrap; }
+  .pkfoot .here { color: var(--muted); font-size: 13px; flex: 1; }
+  .pkfoot .primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .err { color: var(--bad); padding: 0 14px 8px; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Wallfit</h1>
+    <button class="folderBtn" id="folderBtn" title="Change folder">📁 <span class="path" id="folderPath">Choose a folder…</span></button>
+  </div>
+
+  <div class="grp">
+    <label for="preset">Screen</label>
+    <select id="preset"></select>
+    <input type="number" id="tw" min="1"> <span style="color:var(--muted)">×</span> <input type="number" id="th" min="1">
+    <button id="rotate" title="Swap width and height (landscape ⇄ vertical)">⟲ Rotate</button>
+  </div>
+
+  <div class="grp">
+    <label><input type="checkbox" id="matchAr"> Match shape</label>
+    <input type="range" id="arTol" min="0" max="40" value="10" title="Aspect ratio tolerance">
+    <span id="arTolV" class="badge">±10%</span>
+  </div>
+
+  <div class="grp">
+    <label for="minPct">Min size</label>
+    <select id="minPct" title="How big the image must be relative to your screen (after cropping to fill)">
+      <option value="1">100% (sharp)</option>
+      <option value="0.9">90%</option>
+      <option value="0.75">75%</option>
+      <option value="0">Any</option>
+    </select>
+  </div>
+
+  <div class="grp">
+    <button id="showAll" title="Show non-matching images faded instead of hiding them">Show rejects</button>
+    <button id="starOnly" title="Only show shortlisted (★) images">★ Shortlist</button>
+    <button id="fitBtn" title="Thumbnails: crop to screen shape vs. show whole image">Crop preview</button>
+  </div>
+
+  <div class="grp">
+    <label for="sort">Sort</label>
+    <select id="sort">
+      <option value="px">Largest first</option>
+      <option value="ar">Closest shape</option>
+      <option value="name">Name</option>
+    </select>
+    <input type="range" id="tile" min="140" max="420" value="220" title="Thumbnail size">
+  </div>
+
+  <div class="count" id="count"></div>
+</header>
+
+<main><div class="progress" id="progress" hidden><div id="progressText">Scanning…</div><div class="bar"><i id="progressBar"></i></div></div>
+<div class="grid" id="grid"></div><div class="empty" id="empty" hidden>No images match. Try lowering “Min size” or turning off “Match shape”.</div></main>
+
+<div id="viewer">
+  <div class="vbar">
+    <span class="title" id="vTitle"></span>
+    <span class="info" id="vInfo"></span>
+    <span class="sp"></span>
+    <button id="vCrop" title="Preview cropped to your screen shape (C)">Screen crop</button>
+    <button id="vStar">☆ Shortlist</button>
+    <button id="vReveal">Show in folder</button>
+    <button id="vSet" title="Choose monitors, positioning and crop (W)">🖥 Set as wallpaper…</button>
+    <button id="vClose" title="Esc">✕</button>
+  </div>
+  <div class="vbody">
+    <div class="stage" id="stage">
+      <button class="nav prev" id="vPrev">‹</button>
+      <div class="frame" id="vFrame"><img class="blurbg" id="vBg" alt=""><img id="vImg" alt=""></div>
+      <div id="cropBox" hidden><i class="h nw"></i><i class="h ne"></i><i class="h sw"></i><i class="h se"></i><span id="cropLbl"></span></div>
+      <button class="nav next" id="vNext">›</button>
+    </div>
+    <aside id="wpPanel" hidden>
+      <h3>Set as wallpaper</h3>
+      <div class="sec">
+        <div class="lbl">Monitors <span class="links"><a id="monAll">all</a> · <a id="monNone">none</a></span></div>
+        <div id="monMap"></div>
+        <div class="note" id="monNote"></div>
+      </div>
+      <div class="sec">
+        <div class="lbl">Positioning</div>
+        <select id="wpFill"></select>
+        <label id="wpBlurRow"><input type="checkbox" id="wpBlur"> Blur the empty space</label>
+      </div>
+      <div class="sec">
+        <div class="lbl">Crop</div>
+        <button id="wpCropBtn">✂ Custom crop</button>
+        <div class="note" id="wpCropInfo">KDE always crops around the centre. Turn this on to choose which part of the picture to keep: drag the box, pull its corners, or scroll to zoom.</div>
+      </div>
+      <button class="primary" id="wpApply">Set wallpaper</button>
+      <div class="note" id="wpStatus"></div>
+    </aside>
+  </div>
+  <div class="hint"><kbd>←</kbd><kbd>→</kbd> browse · <kbd>S</kbd> shortlist · <kbd>C</kbd> crop preview · <kbd>W</kbd> wallpaper panel · <kbd>Esc</kbd> close</div>
+</div>
+<div id="picker">
+  <div class="pk">
+    <h2>Choose a folder <button id="pkClose" title="Esc">✕</button></h2>
+    <div class="pkrow">
+      <button id="pkUp" title="Parent folder">↑ Up</button>
+      <button id="pkHome" title="Home folder">⌂</button>
+      <input type="text" id="pkPath" spellcheck="false" placeholder="/path/to/folder — paste or type, then Enter">
+      <button id="pkNative" hidden title="Choose with the KDE folder dialog">Browse…</button>
+    </div>
+    <div class="recent" id="pkRecent"></div>
+    <div class="err" id="pkErr" hidden></div>
+    <div class="dirs" id="pkDirs"></div>
+    <div class="pkfoot">
+      <span class="here" id="pkHere"></span>
+      <label><input type="checkbox" id="pkRec" checked> Include subfolders</label>
+      <button class="primary" id="pkOpen">Open this folder</button>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let FOLDER = null;
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+const myW = Math.round(screen.width * devicePixelRatio), myH = Math.round(screen.height * devicePixelRatio);
+// [label, width, height, group]
+const PRESETS = [
+  [`My screen (${myW}×${myH})`, myW, myH, ''],
+  ['1920×1080 (FHD)', 1920, 1080, 'Landscape'], ['2560×1440 (QHD)', 2560, 1440, 'Landscape'], ['3840×2160 (4K)', 3840, 2160, 'Landscape'],
+  ['1920×1200 (16:10)', 1920, 1200, 'Landscape'], ['2560×1600 (16:10)', 2560, 1600, 'Landscape'],
+  ['2560×1080 (ultrawide)', 2560, 1080, 'Ultrawide'], ['3440×1440 (ultrawide)', 3440, 1440, 'Ultrawide'], ['5120×1440 (super-ultrawide)', 5120, 1440, 'Ultrawide'],
+  ['1080×1920 (FHD vertical)', 1080, 1920, 'Vertical'], ['1440×2560 (QHD vertical)', 1440, 2560, 'Vertical'], ['2160×3840 (4K vertical)', 2160, 3840, 'Vertical'],
+  ['1200×1920 (16:10 vertical)', 1200, 1920, 'Vertical'], ['1600×2560 (16:10 vertical)', 1600, 2560, 'Vertical'],
+  ['Custom', 0, 0, ''],
+];
+{
+  const groups = {};
+  PRESETS.forEach(([n, , , g], i) => {
+    let parent = $('preset');
+    if (g) { if (!groups[g]) { groups[g] = document.createElement('optgroup'); groups[g].label = g; $('preset').appendChild(groups[g]); } parent = groups[g]; }
+    parent.appendChild(new Option(n, i));
+  });
+}
+
+const S = Object.assign({ preset: 0, tw: myW, th: myH, matchAr: false, arTol: 10, minPct: '1',
+  showAll: false, starOnly: false, crop: true, sort: 'px', tile: 220, vCrop: true }, store.get('wp-settings', {}));
+let stars = new Set();
+let images = [], visible = [], cur = -1;
+
+function save() { store.set('wp-settings', S); }
+function saveStars() { store.set('wp-stars:' + FOLDER, [...stars]); }
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2200); }
+
+// How well an image covers the target screen when scaled to fill it (cropping the excess).
+function score(im) {
+  const tAr = S.tw / S.th, ar = im.w / im.h;
+  // effective resolution if cropped to the screen's shape
+  const effW = ar > tAr ? im.h * tAr : im.w;
+  const pct = effW / S.tw;                        // 1.0 = exactly enough pixels
+  const arDiff = Math.abs(ar / tAr - 1);
+  const okSize = pct >= parseFloat(S.minPct);
+  const okAr = !S.matchAr || arDiff <= S.arTol / 100;
+  return { pct, arDiff, ok: okSize && okAr };
+}
+
+function syncControls() {
+  $('preset').value = S.preset; $('tw').value = S.tw; $('th').value = S.th;
+  $('matchAr').checked = S.matchAr; $('arTol').value = S.arTol; $('arTolV').textContent = `±${S.arTol}%`;
+  $('arTol').disabled = !S.matchAr;
+  $('minPct').value = S.minPct; $('sort').value = S.sort; $('tile').value = S.tile;
+  $('showAll').classList.toggle('on', S.showAll); $('starOnly').classList.toggle('on', S.starOnly);
+  $('fitBtn').classList.toggle('on', S.crop);
+  document.documentElement.style.setProperty('--ar', `${S.tw}/${S.th}`);
+  document.documentElement.style.setProperty('--tile', S.tile + 'px');
+  $('grid').classList.toggle('fit-contain', !S.crop);
+}
+
+function badgeClass(pct) { return pct >= 1 ? 'good' : pct >= 0.75 ? 'warn' : 'bad'; }
+
+function render() {
+  syncControls();
+  const rows = images.map(im => ({ im, s: score(im) }))
+    .filter(r => (!S.starOnly || stars.has(r.im.rel)) && (S.showAll || r.s.ok));
+  const cmp = { px: (a, b) => b.im.w * b.im.h - a.im.w * a.im.h,
+                ar: (a, b) => a.s.arDiff - b.s.arDiff || b.s.pct - a.s.pct,
+                name: (a, b) => a.im.name.localeCompare(b.im.name, undefined, { numeric: true }) }[S.sort];
+  rows.sort((a, b) => (b.s.ok - a.s.ok) || cmp(a, b));
+  visible = rows;
+  const matching = images.filter(im => score(im).ok).length;
+  $('count').innerHTML = `<b>${matching}</b> of ${images.length} fit · <b>${stars.size}</b> ★`;
+  $('empty').hidden = rows.length > 0;
+  $('empty').textContent = images.length ? 'No images match. Try lowering “Min size”, turning off “Match shape”, or rotating the screen.' : 'No images found in this folder.';
+
+  const frag = document.createDocumentFragment();
+  rows.forEach(({ im, s }, i) => {
+    const c = document.createElement('div');
+    c.className = 'card' + (s.ok ? '' : ' dim');
+    c.innerHTML = `<img class="thumb" loading="lazy" decoding="async" src="/thumb/${im.thumb}" alt="">
+      <button class="star${stars.has(im.rel) ? ' on' : ''}" title="Shortlist">${stars.has(im.rel) ? '★' : '☆'}</button>
+      <div class="meta"><span class="nm" title="${esc(im.rel)}">${esc(im.name)}</span>
+      <span class="badge ${badgeClass(s.pct)}" title="${Math.round(s.pct * 100)}% of screen resolution after crop">${im.w}×${im.h}</span></div>`;
+    c.onclick = () => openViewer(i);
+    c.querySelector('.star').onclick = e => { e.stopPropagation(); toggleStar(im.rel); };
+    frag.appendChild(c);
+  });
+  $('grid').replaceChildren(frag);
+}
+
+function esc(s) { return s.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); }
+
+function toggleStar(rel) {
+  stars.has(rel) ? stars.delete(rel) : stars.add(rel);
+  saveStars();
+  const scroll = scrollY; render(); scrollTo(0, scroll);
+  if (cur >= 0) {
+    // keep the viewer on the same image even if the list changed
+    const idx = visible.findIndex(r => r.im.rel === rel);
+    if (idx >= 0) cur = idx; else if (cur >= visible.length) cur = visible.length - 1;
+    if (cur < 0) closeViewer(); else showCur();
+  }
+}
+
+// ---------- viewer ----------
+function openViewer(i) { cur = i; $('viewer').classList.add('open'); document.body.style.overflow = 'hidden'; showCur(); }
+function closeViewer() { cur = -1; $('viewer').classList.remove('open'); document.body.style.overflow = ''; $('vImg').removeAttribute('src'); }
+function showCur() {
+  const { im, s } = visible[cur];
+  const img = $('vImg');
+  img.src = '/thumb/' + im.thumb;                 // instant low-res, then swap to full
+  const full = new Image(); full.src = '/img?p=' + encodeURIComponent(im.rel);
+  full.onload = () => { if (visible[cur] && visible[cur].im === im) { img.src = full.src; stageMode(); } };
+  $('vBg').src = img.src;
+  $('vCrop').classList.toggle('on', S.vCrop);
+  WP.box = null;  // new picture → fresh crop box
+  stageMode();
+  $('vTitle').textContent = im.name;
+  const g = (a, b) => b ? g(b, a % b) : a, d = g(im.w, im.h);
+  const arTxt = (im.w / d <= 64) ? `${im.w / d}:${im.h / d}` : (im.w / im.h).toFixed(2) + ':1';
+  $('vInfo').innerHTML = `${im.w}×${im.h} · ${arTxt} · ${(im.bytes / 1048576).toFixed(1)} MB · ` +
+    `<span class="badge ${badgeClass(s.pct)}">${Math.round(s.pct * 100)}% of screen</span> · ${cur + 1}/${visible.length}`;
+  const on = stars.has(im.rel);
+  $('vStar').textContent = on ? '★ Shortlisted' : '☆ Shortlist';
+  $('vStar').classList.toggle('on', on);
+  // preload neighbours
+  [cur - 1, cur + 1].forEach(j => { if (visible[j]) new Image().src = '/img?p=' + encodeURIComponent(visible[j].im.rel); });
+}
+function step(d) { if (!visible.length) return; cur = (cur + d + visible.length) % visible.length; showCur(); }
+async function post(url, extra) {
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ p: visible[cur].im.rel, ...extra }) });
+  return r.json().catch(() => ({ ok: r.ok }));
+}
+
+// ---------- wallpaper panel ----------
+const WP = Object.assign({ fill: 2, blur: false, sel: [], prev: null }, store.get('wp-panel', {}), { crop: false, box: null, open: false });
+let SCREENS = [], KDE = false;
+const saveWP = () => store.set('wp-panel', { fill: WP.fill, blur: WP.blur, sel: WP.sel, prev: WP.prev });
+const selScreens = () => SCREENS.filter(s => WP.sel.includes(s.name));
+const previewMon = () => SCREENS.find(s => s.name === WP.prev && WP.sel.includes(s.name)) || selScreens()[0] || null;
+
+async function loadScreens() {
+  try { const d = await (await fetch('/api/screens')).json(); SCREENS = d.screens; KDE = d.kde;
+    $('wpFill').replaceChildren(...Object.entries(d.fills).map(([v, n]) => new Option(n, v)));
+  } catch { SCREENS = []; }
+  WP.sel = WP.sel.filter(n => SCREENS.some(s => s.name === n));
+  if (!WP.sel.length && SCREENS.length) WP.sel = [(SCREENS.find(s => s.primary) || SCREENS[0]).name];
+  addMonitorPresets(); drawMonitors();
+}
+
+function drawMonitors() {
+  const map = $('monMap');
+  if (!SCREENS.length) { map.style.height = 'auto'; map.innerHTML = `<div class="note">${KDE ? 'No monitors found.' : 'KDE Plasma scripting isn’t available, so the picture will be set on every monitor.'}</div>`; return; }
+  const x0 = Math.min(...SCREENS.map(s => s.x)), y0 = Math.min(...SCREENS.map(s => s.y));
+  const x1 = Math.max(...SCREENS.map(s => s.x + s.lw)), y1 = Math.max(...SCREENS.map(s => s.y + s.lh));
+  const W = map.clientWidth || 272, k = Math.min(W / (x1 - x0), 150 / (y1 - y0));
+  map.style.height = Math.ceil((y1 - y0) * k) + 'px';
+  const pm = previewMon();
+  map.replaceChildren(...SCREENS.map(s => {
+    const el = document.createElement('div');
+    el.className = 'mon' + (WP.sel.includes(s.name) ? ' sel' : '') + (WP.sel.length > 1 && pm === s ? ' prev' : '');
+    Object.assign(el.style, { left: (s.x - x0) * k + 2 + 'px', top: (s.y - y0) * k + 2 + 'px', width: s.lw * k - 4 + 'px', height: s.lh * k - 4 + 'px' });
+    el.innerHTML = `<span>${esc(s.name)}${s.primary ? ' ★' : ''}<br>${s.w}×${s.h}</span>`;
+    el.title = `${s.name} — ${s.w}×${s.h}${s.primary ? ' (primary)' : ''}\nCurrent: ${decodeURIComponent((s.image || '').replace('file://', ''))}`;
+    el.onclick = () => {
+      if (!WP.sel.includes(s.name)) { WP.sel.push(s.name); WP.prev = s.name; }
+      else if (pm === s || WP.sel.length === 1) WP.sel = WP.sel.filter(n => n !== s.name);
+      else WP.prev = s.name;
+      WP.box = null; saveWP(); drawMonitors(); stageMode();
+    };
+    return el;
+  }));
+  const sel = selScreens(), n = sel.length;
+  $('wpApply').disabled = KDE && !n;
+  $('wpApply').textContent = !KDE ? 'Set on all monitors' : n ? `Set on ${n === SCREENS.length ? 'all ' + n + ' monitors' : n === 1 ? sel[0].name : n + ' monitors'}` : 'Pick a monitor';
+  const shapes = new Set(sel.map(s => (s.w / s.h).toFixed(2)));
+  $('monNote').textContent = !n ? 'Click a monitor to select it.' :
+    n > 1 ? `Previewing ${pm.name} (dashed). Click another selected monitor to preview it, or click ${pm.name} again to deselect it.` +
+      (shapes.size > 1 ? ' These monitors are different shapes, so each one crops the picture in its own way.' : '') :
+    'Click more monitors to set the same picture on them too.';
+}
+
+function stageMode() {
+  if (cur < 0) return;
+  const fr = $('vFrame'), img = $('vImg'), im = visible[cur].im, mon = WP.open ? previewMon() : null;
+  fr.className = 'frame'; fr.style.backgroundImage = ''; fr.style.removeProperty('--ar'); img.style.width = img.style.height = '';
+  $('cropBox').hidden = true;
+  $('wpFill').value = WP.fill; $('wpBlur').checked = WP.blur;
+  $('wpFill').disabled = WP.crop;
+  $('wpBlurRow').hidden = WP.crop || !(WP.fill == 1 || WP.fill == 6);
+  $('wpCropBtn').classList.toggle('on', WP.crop);
+  $('vSet').classList.toggle('on', WP.open);
+  $('wpCropBtn').disabled = !mon && SCREENS.length > 0;
+  if (WP.open && WP.crop && mon) { fr.classList.add('natural'); layoutCrop(); return; }
+  if (!mon) { fr.classList.toggle('natural', !S.vCrop); updateCropInfo(); return; }
+  fr.style.setProperty('--ar', `${mon.w}/${mon.h}`);
+  const f = +WP.fill;
+  fr.classList.add('mode-' + f);
+  if (WP.blur && (f === 1 || f === 6)) fr.classList.add('blur');
+  if (f === 6) { img.style.width = im.w / mon.w * 100 + '%'; img.style.height = im.h / mon.h * 100 + '%'; }
+  if (f === 3) { fr.style.backgroundImage = `url("${img.src}")`; fr.style.backgroundSize = `${im.w / mon.w * 100}% ${im.h / mon.h * 100}%`; }
+  updateCropInfo();
+}
+
+function defaultBox(im, mon) {   // what KDE's "Scaled and cropped" would keep
+  const ar = mon.w / mon.h;
+  let w = im.w, h = w / ar; if (h > im.h) { h = im.h; w = h * ar; }
+  return { x: (im.w - w) / 2, y: (im.h - h) / 2, w, h };
+}
+function clampBox(b, im) {
+  b.w = Math.min(b.w, im.w); b.h = Math.min(b.h, im.h);
+  b.x = Math.max(0, Math.min(b.x, im.w - b.w)); b.y = Math.max(0, Math.min(b.y, im.h - b.h));
+  return b;
+}
+function layoutCrop() {
+  const im = visible[cur].im, mon = previewMon(), img = $('vImg'), box = $('cropBox');
+  if (!WP.box) WP.box = defaultBox(im, mon);
+  const r = img.getBoundingClientRect(), s = $('stage').getBoundingClientRect();
+  if (!r.width) { requestAnimationFrame(layoutCrop); return; }
+  const k = r.width / im.w, b = WP.box;
+  Object.assign(box.style, { left: r.left - s.left + b.x * k + 'px', top: r.top - s.top + b.y * k + 'px', width: b.w * k + 'px', height: b.h * k + 'px' });
+  box.hidden = false;
+  updateCropInfo();
+}
+function updateCropInfo() {
+  const mon = WP.open ? previewMon() : null;
+  if (!WP.crop || !mon || !WP.box) {
+    $('cropLbl').textContent = '';
+    $('wpCropInfo').textContent = 'KDE always crops around the centre. Turn this on to choose which part of the picture to keep: drag the box, pull its corners, or scroll to zoom.';
+    return;
+  }
+  const b = WP.box, pct = Math.round(b.w / mon.w * 100);
+  $('cropLbl').textContent = `${Math.round(b.w)}×${Math.round(b.h)} · ${pct}% of ${mon.name}`;
+  $('wpCropInfo').innerHTML = `Keeping <b>${Math.round(b.w)}×${Math.round(b.h)}</b> pixels, shaped for ${esc(mon.name)} ` +
+    `(<span class="badge ${badgeClass(b.w / mon.w)}">${pct}% sharp</span>). A cropped copy is saved in ~/Pictures/Wallpapers.`;
+}
+
+// crop box dragging
+{
+  let drag = null;
+  $('cropBox').addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation();
+    const im = visible[cur].im, k = $('vImg').getBoundingClientRect().width / im.w;
+    const h = e.target.classList.contains('h') ? [...e.target.classList].find(c => c.length === 2) : null;
+    drag = { h, k, sx: e.clientX, sy: e.clientY, b: { ...WP.box }, im, ar: previewMon().w / previewMon().h };
+    $('cropBox').setPointerCapture(e.pointerId);
+  });
+  $('cropBox').addEventListener('pointermove', e => {
+    if (!drag) return;
+    const { b, k, im, ar } = drag, dx = (e.clientX - drag.sx) / k, dy = (e.clientY - drag.sy) / k;
+    if (!drag.h) { WP.box = clampBox({ ...b, x: b.x + dx, y: b.y + dy }, im); }
+    else {
+      // resize from the opposite (anchored) corner, keeping the monitor's shape
+      const right = drag.h.includes('e'), bottom = drag.h.includes('s');
+      const ax = right ? b.x : b.x + b.w, ay = bottom ? b.y : b.y + b.h;
+      let w = Math.max(b.w + (right ? dx : -dx), (b.h + (bottom ? dy : -dy)) * ar, 40);
+      const maxW = Math.min(right ? im.w - ax : ax, (bottom ? im.h - ay : ay) * ar);
+      w = Math.min(w, maxW); const h = w / ar;
+      WP.box = { x: right ? ax : ax - w, y: bottom ? ay : ay - h, w, h };
+    }
+    layoutCrop();
+  });
+  const end = () => { if (drag) { drag = null; justDragged = Date.now(); } };
+  $('cropBox').addEventListener('pointerup', end); $('cropBox').addEventListener('pointercancel', end);
+  $('stage').addEventListener('wheel', e => {
+    if (!(WP.open && WP.crop && WP.box)) return;
+    e.preventDefault();
+    const im = visible[cur].im, b = WP.box, ar = b.w / b.h, f = e.deltaY > 0 ? 1.06 : 1 / 1.06;
+    let w = Math.max(40, Math.min(b.w * f, im.w, im.h * ar)), h = w / ar;
+    WP.box = clampBox({ x: b.x + (b.w - w) / 2, y: b.y + (b.h - h) / 2, w, h }, im);
+    layoutCrop();
+  }, { passive: false });
+  addEventListener('resize', () => { if (cur >= 0 && WP.open && WP.crop) layoutCrop(); else if (WP.open) drawMonitors(); });
+}
+let justDragged = 0;
+
+function togglePanel(force) {
+  WP.open = force ?? !WP.open;
+  $('wpPanel').hidden = !WP.open;
+  if (WP.open) { $('wpStatus').textContent = ''; drawMonitors(); }
+  stageMode();
+}
+$('vSet').onclick = () => togglePanel();
+$('monAll').onclick = () => { WP.sel = SCREENS.map(s => s.name); WP.box = null; saveWP(); drawMonitors(); stageMode(); };
+$('monNone').onclick = () => { WP.sel = []; saveWP(); drawMonitors(); stageMode(); };
+$('wpFill').onchange = e => { WP.fill = +e.target.value; saveWP(); stageMode(); };
+$('wpBlur').onchange = e => { WP.blur = e.target.checked; saveWP(); stageMode(); };
+$('wpCropBtn').onclick = () => { WP.crop = !WP.crop; stageMode(); };
+$('wpApply').onclick = async () => {
+  const sel = selScreens();
+  $('wpApply').disabled = true; $('wpStatus').textContent = 'Setting…';
+  const b = WP.crop && WP.box ? WP.box : null;
+  const r = await post('/api/wallpaper', { screens: KDE ? sel.map(s => s.screen) : null, fill: b ? 2 : WP.fill, blur: WP.blur,
+    crop: b && { x: b.x, y: b.y, w: b.w, h: b.h } });
+  $('wpStatus').textContent = r.ok ? '✓ Done — ' + r.msg : '✗ ' + (r.msg || 'failed');
+  toast(r.ok ? `Wallpaper set on ${KDE ? sel.map(s => s.name).join(', ') : 'all monitors'} ✓` : 'Could not set wallpaper');
+  await loadScreens();
+};
+
+// the real monitors also become screen-size presets in the toolbar
+function addMonitorPresets() {
+  $('preset').querySelector('optgroup[label="Your monitors"]')?.remove();
+  if (!SCREENS.length) return;
+  const g = document.createElement('optgroup'); g.label = 'Your monitors';
+  SCREENS.forEach((s, i) => g.appendChild(new Option(`${s.name} (${s.w}×${s.h})${s.h > s.w ? ' vertical' : ''}`, 'm' + i)));
+  $('preset').insertBefore(g, $('preset').children[1]);
+  syncControls();
+}
+
+$('vPrev').onclick = () => step(-1); $('vNext').onclick = () => step(1);
+$('vClose').onclick = closeViewer;
+$('vStar').onclick = () => toggleStar(visible[cur].im.rel);
+$('vCrop').onclick = () => { S.vCrop = !S.vCrop; save(); showCur(); };
+$('vReveal').onclick = () => post('/api/reveal');
+$('stage').onclick = e => { if (e.target.id === 'stage' && !(WP.open && WP.crop) && Date.now() - justDragged > 300) closeViewer(); };
+addEventListener('keydown', e => {
+  if (cur < 0 || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key.toLowerCase() === 'w') return togglePanel();
+  if (e.key === 'ArrowLeft') step(-1);
+  else if (e.key === 'ArrowRight') step(1);
+  else if (e.key === 'Escape') closeViewer();
+  else if (e.key.toLowerCase() === 's') toggleStar(visible[cur].im.rel);
+  else if (e.key.toLowerCase() === 'c') $('vCrop').click();
+});
+
+// ---------- toolbar ----------
+$('preset').onchange = e => {
+  const v = e.target.value;
+  if (v[0] === 'm') { const s = SCREENS[+v.slice(1)]; S.preset = v; S.tw = s.w; S.th = s.h; }
+  else { S.preset = +v; const p = PRESETS[S.preset]; if (p[1]) { S.tw = p[1]; S.th = p[2]; } }
+  save(); render();
+};
+const custom = () => { S.tw = Math.max(1, +$('tw').value || 1); S.th = Math.max(1, +$('th').value || 1);
+  const i = PRESETS.findIndex(p => p[1] === S.tw && p[2] === S.th); S.preset = i >= 0 ? i : PRESETS.length - 1; save(); render(); };
+$('tw').onchange = custom; $('th').onchange = custom;
+$('matchAr').onchange = e => { S.matchAr = e.target.checked; save(); render(); };
+$('arTol').oninput = e => { S.arTol = +e.target.value; save(); render(); };
+$('minPct').onchange = e => { S.minPct = e.target.value; save(); render(); };
+$('sort').onchange = e => { S.sort = e.target.value; save(); render(); };
+$('tile').oninput = e => { S.tile = +e.target.value; save(); syncControls(); };
+$('showAll').onclick = () => { S.showAll = !S.showAll; save(); render(); };
+$('starOnly').onclick = () => { S.starOnly = !S.starOnly; save(); render(); };
+$('fitBtn').onclick = () => { S.crop = !S.crop; save(); syncControls(); };
+$('rotate').onclick = () => { [S.tw, S.th] = [S.th, S.tw];
+  const i = PRESETS.findIndex(p => p[1] === S.tw && p[2] === S.th); S.preset = i >= 0 ? i : PRESETS.length - 1; save(); render(); };
+
+// ---------- folder loading ----------
+async function loadStatus() {
+  const st = await (await fetch('/api/status')).json();
+  $('pkNative').hidden = !st.native;
+  if (!st.folder) { images = []; render(); openPicker(); return; }
+  setFolder(st.folder);
+  if (st.scanning) {
+    $('progress').hidden = false; $('grid').replaceChildren(); $('empty').hidden = true;
+    $('progressText').textContent = st.total ? `Scanning ${st.done} / ${st.total} images… (first time in a folder is slowest)` : 'Looking for images…';
+    $('progressBar').style.width = st.total ? (100 * st.done / st.total) + '%' : '0';
+    setTimeout(loadStatus, 400);
+    return;
+  }
+  $('progress').hidden = true;
+  const d = await (await fetch('/api/images')).json();
+  images = d.images; cur = -1;
+  render();
+}
+function setFolder(f) {
+  if (f === FOLDER) return;
+  FOLDER = f;
+  stars = new Set(store.get('wp-stars:' + FOLDER, []));
+  $('folderPath').textContent = f; $('folderBtn').title = f + ' — click to change folder';
+  document.title = 'Wallfit — ' + f.split('/').filter(Boolean).pop();
+  const rec = store.get('wp-recent', []).filter(x => x !== f); rec.unshift(f); store.set('wp-recent', rec.slice(0, 8));
+}
+
+// ---------- folder picker ----------
+let pkCur = null;
+async function pkGo(path) {
+  const d = await (await fetch('/api/browse?path=' + encodeURIComponent(path || ''))).json();
+  $('pkErr').hidden = !d.error; $('pkErr').textContent = d.error || '';
+  if (d.error) return;
+  pkCur = d;
+  $('pkPath').value = d.path;
+  $('pkUp').disabled = !d.parent;
+  $('pkHere').textContent = d.images ? `${d.images} image${d.images > 1 ? 's' : ''} directly in this folder` : 'No images directly in this folder';
+  const frag = document.createDocumentFragment();
+  d.dirs.forEach(name => {
+    const el = document.createElement('div'); el.className = 'dir'; el.textContent = '📁 ' + name;
+    el.onclick = () => pkGo(d.path.replace(/\/$/, '') + '/' + name);
+    frag.appendChild(el);
+  });
+  if (!d.dirs.length) { const n = document.createElement('div'); n.className = 'none'; n.textContent = 'No subfolders'; frag.appendChild(n); }
+  $('pkDirs').replaceChildren(frag); $('pkDirs').scrollTop = 0;
+}
+function openPicker() {
+  $('picker').classList.add('open');
+  const rec = store.get('wp-recent', []);
+  $('pkRecent').replaceChildren(...rec.map(f => { const b = document.createElement('button'); b.textContent = f.split('/').filter(Boolean).slice(-2).join('/'); b.title = f; b.onclick = () => pkGo(f); return b; }));
+  $('pkRecent').hidden = !rec.length;
+  pkGo(FOLDER || '');
+}
+function closePicker() { if (FOLDER) $('picker').classList.remove('open'); }
+$('folderBtn').onclick = openPicker;
+$('pkClose').onclick = closePicker;
+$('picker').onclick = e => { if (e.target.id === 'picker') closePicker(); };
+$('pkUp').onclick = () => pkCur && pkCur.parent && pkGo(pkCur.parent);
+$('pkHome').onclick = () => pkGo('');
+$('pkPath').onkeydown = e => { if (e.key === 'Enter') pkGo($('pkPath').value.trim()); };
+$('pkNative').onclick = async () => {
+  const d = await (await fetch('/api/pick-folder?start=' + encodeURIComponent(pkCur ? pkCur.path : ''))).json();
+  if (d.path) { await pkGo(d.path); $('pkOpen').click(); }   // chosen in KDE's dialog → open it straight away
+};
+$('pkOpen').onclick = async () => {
+  const r = await fetch('/api/open', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: pkCur.path, recursive: $('pkRec').checked }) });
+  const d = await r.json();
+  if (!d.ok) { $('pkErr').hidden = false; $('pkErr').textContent = d.msg; return; }
+  $('picker').classList.remove('open'); scrollTo(0, 0);
+  FOLDER = null; loadStatus();
+};
+addEventListener('keydown', e => { if (e.key === 'Escape' && $('picker').classList.contains('open')) closePicker(); });
+
+// "My screen" always reflects the current monitor
+if (S.preset === 0) { S.tw = myW; S.th = myH; }
+loadStatus();
+loadScreens();
+// notice when the folder was changed from outside (e.g. launching the app again with a folder)
+setInterval(async () => {
+  try {
+    const st = await (await fetch('/api/status')).json();
+    if (st.folder && st.folder !== FOLDER) { $('picker').classList.remove('open'); FOLDER = null; closeViewer(); loadStatus(); }
+  } catch {}
+}, 1500);
+</script>
+</body>
+</html>

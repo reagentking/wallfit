@@ -1,0 +1,3 @@
+Pillow>=9.0
+PyQt6>=6.4          # desktop window (not needed for browser mode: python3 wallfit.py)
+PyQt6-WebEngine>=6.4
