@@ -218,6 +218,11 @@
         <div id="monMap"></div>
         <div class="note" id="monNote"></div>
       </div>
+      <div class="sec" id="lockSec" hidden>
+        <div class="lbl">Lock screen</div>
+        <label><input type="checkbox" id="wpLock"> 🔒 Use for the lock screen too</label>
+        <div class="note" id="lockNote"></div>
+      </div>
       <div class="sec">
         <div class="lbl">Positioning</div>
         <select id="wpFill"></select>
@@ -392,13 +397,14 @@ async function post(url, extra) {
 
 // ---------- wallpaper panel ----------
 const WP = Object.assign({ fill: 2, blur: false, sel: [], prev: null }, store.get('wp-panel', {}), { crop: false, box: null, open: false });
-let SCREENS = [], KDE = false;
+let SCREENS = [], KDE = false, LOCK = false, LOCK_IMG = null;
+WP.lock = false;   // deliberately not remembered: opt in each time
 const saveWP = () => store.set('wp-panel', { fill: WP.fill, blur: WP.blur, sel: WP.sel, prev: WP.prev });
 const selScreens = () => SCREENS.filter(s => WP.sel.includes(s.name));
 const previewMon = () => SCREENS.find(s => s.name === WP.prev && WP.sel.includes(s.name)) || selScreens()[0] || null;
 
 async function loadScreens() {
-  try { const d = await (await fetch('/api/screens')).json(); SCREENS = d.screens; KDE = d.kde;
+  try { const d = await (await fetch('/api/screens')).json(); SCREENS = d.screens; KDE = d.kde; LOCK = !!d.lock; LOCK_IMG = d.lockImage;
     $('wpFill').replaceChildren(...Object.entries(d.fills).map(([v, n]) => new Option(n, v)));
   } catch { SCREENS = []; }
   WP.sel = WP.sel.filter(n => SCREENS.some(s => s.name === n));
@@ -429,13 +435,25 @@ function drawMonitors() {
     return el;
   }));
   const sel = selScreens(), n = sel.length;
-  $('wpApply').disabled = KDE && !n;
-  $('wpApply').textContent = !KDE ? 'Set on all monitors' : n ? `Set on ${n === SCREENS.length ? 'all ' + n + ' monitors' : n === 1 ? sel[0].name : n + ' monitors'}` : 'Pick a monitor';
+  drawLock();
+  const lock = LOCK && WP.lock;
+  $('wpApply').disabled = KDE && !n && !lock;
+  const mons = !KDE ? 'all monitors' : n ? (n === SCREENS.length ? 'all ' + n + ' monitors' : n === 1 ? sel[0].name : n + ' monitors') : '';
+  $('wpApply').textContent = mons || lock ? 'Set on ' + [mons, lock && 'lock screen'].filter(Boolean).join(' + ') : 'Pick a monitor';
   const shapes = new Set(sel.map(s => (s.w / s.h).toFixed(2)));
   $('monNote').textContent = !n ? 'Click a monitor to select it.' :
     n > 1 ? `Previewing ${pm.name} (dashed). Click another selected monitor to preview it, or click ${pm.name} again to deselect it.` +
       (shapes.size > 1 ? ' These monitors are different shapes, so each one crops the picture in its own way.' : '') :
     'Click more monitors to set the same picture on them too.';
+}
+
+function drawLock() {
+  $('lockSec').hidden = !LOCK;
+  $('wpLock').checked = WP.lock;
+  const now = LOCK_IMG ? decodeURIComponent(LOCK_IMG.replace('file://', '')).split('/').pop() : null;
+  $('lockNote').textContent = (now ? `Currently: ${now}. ` : '') +
+    'The lock screen shows one picture on every monitor, with the positioning chosen below.' +
+    (WP.lock && !selScreens().length ? ' No monitors are selected, so only the lock screen will change.' : '');
 }
 
 function stageMode() {
@@ -544,14 +562,16 @@ $('monNone').onclick = () => { WP.sel = []; saveWP(); drawMonitors(); stageMode(
 $('wpFill').onchange = e => { WP.fill = +e.target.value; saveWP(); stageMode(); };
 $('wpBlur').onchange = e => { WP.blur = e.target.checked; saveWP(); stageMode(); };
 $('wpCropBtn').onclick = () => { WP.crop = !WP.crop; stageMode(); };
+$('wpLock').onchange = e => { WP.lock = e.target.checked; drawMonitors(); };
 $('wpApply').onclick = async () => {
-  const sel = selScreens();
+  const sel = selScreens(), lock = LOCK && WP.lock;
   $('wpApply').disabled = true; $('wpStatus').textContent = 'Setting…';
   const b = WP.crop && WP.box ? WP.box : null;
-  const r = await post('/api/wallpaper', { screens: KDE ? sel.map(s => s.screen) : null, fill: b ? 2 : WP.fill, blur: WP.blur,
+  const r = await post('/api/wallpaper', { screens: KDE ? sel.map(s => s.screen) : null, lock, fill: b ? 2 : WP.fill, blur: WP.blur,
     crop: b && { x: b.x, y: b.y, w: b.w, h: b.h } });
   $('wpStatus').textContent = r.ok ? '✓ Done — ' + r.msg : '✗ ' + (r.msg || 'failed');
-  toast(r.ok ? `Wallpaper set on ${KDE ? sel.map(s => s.name).join(', ') : 'all monitors'} ✓` : 'Could not set wallpaper');
+  const where = [KDE ? sel.map(s => s.name).join(', ') : 'all monitors', lock && 'lock screen'].filter(Boolean).join(' + ');
+  toast(r.ok ? `Wallpaper set on ${where} ✓` : 'Could not set wallpaper');
   await loadScreens();
 };
 

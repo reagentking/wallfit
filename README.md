@@ -16,6 +16,7 @@ Wallfit is a small desktop app for Linux, built for KDE Plasma. Point it at a fo
   - Pick monitors on a map of your actual screen layout.
   - Choose KDE's positioning mode (Scaled and cropped, Scaled, Keep proportions, Centered, Tiled, optionally with a blurred background) with a live preview shaped like the monitor.
   - **Custom crop:** KDE always crops around the centre. Wallfit lets you drag, resize or scroll-zoom a crop box locked to the monitor's shape. A cropped copy is saved to `~/Pictures/Wallpapers/` and the original is never modified.
+  - **Lock screen:** tick *Use for the lock screen too* to set the same picture (and positioning) as the KDE lock screen, either alongside your monitors or on its own.
 - **Folder browser:** use KDE's folder dialog or the built-in browser, with recent folders, and optionally include subfolders.
 - **Fast:** thumbnails are generated in parallel and cached in `~/.cache/wallfit`, so reopening a folder is instant.
 
@@ -71,7 +72,7 @@ Launching it again while it's open brings the existing window forward (and switc
 
 Wallfit's interface is a single web page ([`index.html`](index.html)), served by a small Python server ([`wallfit.py`](wallfit.py)) that reads image sizes, makes thumbnails and talks to KDE. The desktop app ([`wallfit_app.py`](wallfit_app.py)) runs that server privately and shows the page in a Qt WebEngine window.
 
-Wallpapers are set through Plasma's desktop scripting interface (`org.kde.PlasmaShell.evaluateScript`). It writes the same per-monitor settings that *Configure Desktop and Wallpaper…* does, so KDE's own settings always reflect what you picked.
+Wallpapers are set through Plasma's desktop scripting interface (`org.kde.PlasmaShell.evaluateScript`). It writes the same per-monitor settings that *Configure Desktop and Wallpaper…* does, so KDE's own settings always reflect what you picked. The lock screen picture is written to `~/.config/kscreenlockerrc` with `kwriteconfig6`, the same place *System Settings → Screen Locking* saves it.
 
 ### Security
 

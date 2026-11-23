@@ -282,6 +282,45 @@ def set_kde_wallpaper(path: Path, screens, fill: int, blur: bool):
     return False, "no matching monitors" if out.strip() == "0" else (out or "Plasma did not respond")
 
 
+KWRITECONFIG = next((k for k in ("kwriteconfig6", "kwriteconfig5") if shutil.which(k)), None)
+KREADCONFIG = next((k for k in ("kreadconfig6", "kreadconfig5") if shutil.which(k)), None)
+LOCK_GROUPS = ["Greeter", "Wallpaper", "org.kde.image", "General"]
+
+
+def _kconfig_args(groups, key):
+    args = ["--file", "kscreenlockerrc"]
+    for g in groups:
+        args += ["--group", g]
+    return args + ["--key", key]
+
+
+def lock_screen_image():
+    """The KDE lock screen's current picture (file:// URI), or None if unknown."""
+    if not KREADCONFIG:
+        return None
+    r = subprocess.run([KREADCONFIG, *_kconfig_args(LOCK_GROUPS, "Image")], capture_output=True, text=True)
+    return r.stdout.strip() or None
+
+
+def set_lock_screen(path: Path, fill: int, blur: bool):
+    """Set the KDE lock screen picture (one picture on every monitor), as System Settings would."""
+    if not KWRITECONFIG:
+        return False, "kwriteconfig6 not found"
+    uri = path.resolve().as_uri()
+    writes = [
+        (["Greeter"], "WallpaperPlugin", "org.kde.image"),
+        (LOCK_GROUPS, "Image", uri),
+        (LOCK_GROUPS, "PreviewImage", uri),
+        (LOCK_GROUPS, "FillMode", str(int(fill))),
+        (LOCK_GROUPS, "Blur", "true" if blur else "false"),
+    ]
+    for groups, key, value in writes:
+        r = subprocess.run([KWRITECONFIG, *_kconfig_args(groups, key), value], capture_output=True, text=True)
+        if r.returncode != 0:
+            return False, (r.stdout + r.stderr).strip() or "could not write kscreenlockerrc"
+    return True, "set on the lock screen"
+
+
 def set_wallpaper(path: Path):
     """Set the desktop wallpaper on all screens (fallback when Plasma scripting isn't available)."""
     if shutil.which("plasma-apply-wallpaperimage"):
@@ -383,7 +422,8 @@ def make_handler(lib: Library, page_path: Path):
                 return self._send(200, {"path": lib.native_pick(q.get("start", [""])[0])})
             if u.path == "/api/screens":
                 s = kde_screens()
-                return self._send(200, {"kde": s is not None, "screens": s or [], "fills": FILL_MODES})
+                return self._send(200, {"kde": s is not None, "screens": s or [], "fills": FILL_MODES,
+                                        "lock": bool(KWRITECONFIG), "lockImage": lock_screen_image()})
             if u.path == "/api/browse":
                 return self._send(200, browse(q.get("path", [""])[0]))
             if u.path.startswith("/thumb/"):
@@ -425,11 +465,17 @@ def make_handler(lib: Library, page_path: Path):
                         target = make_crop(p, body["crop"])
                 except Exception as e:
                     return self._send(500, {"ok": False, "msg": f"crop failed: {e}"})
-                fill = int(body.get("fill", 2))
-                if QDBUS:
-                    ok, msg = set_kde_wallpaper(target, body.get("screens"), fill, body.get("blur", False))
-                else:
-                    ok, msg = set_wallpaper(target)
+                fill, blur = int(body.get("fill", 2)), bool(body.get("blur", False))
+                screens, lock = body.get("screens"), bool(body.get("lock"))
+                results = []
+                if screens != []:  # [] = lock screen only
+                    results.append(set_kde_wallpaper(target, screens, fill, blur) if QDBUS else set_wallpaper(target))
+                if lock:
+                    results.append(set_lock_screen(target, fill, blur))
+                if not results:
+                    return self._send(400, {"ok": False, "msg": "nothing selected"})
+                ok = all(r[0] for r in results)
+                msg = " · ".join(m for _, m in results)
                 if ok and target != p:
                     msg += f" · cropped copy saved to {target}"
                 return self._send(200 if ok else 500, {"ok": ok, "msg": msg})
